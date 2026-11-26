@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../supabaseClient.js'
 import { VERSION } from '../version.js'
 import QrGenerador from '../components/QrGenerador.jsx'
+import Fichas from '../components/Fichas.jsx'
 
 function aCSV(filas) {
   const esc = (v) => `"${String(v).replace(/"/g, '""')}"`
@@ -35,9 +36,10 @@ function Panel() {
     <div>
       <div className="pestanas" role="tablist">
         <button role="tab" aria-selected={vista === 'registro'} className={vista === 'registro' ? 'activa' : ''} onClick={() => setVista('registro')}>Accesos</button>
+        <button role="tab" aria-selected={vista === 'fichas'} className={vista === 'fichas' ? 'activa' : ''} onClick={() => setVista('fichas')}>Fichas</button>
         <button role="tab" aria-selected={vista === 'qr'} className={vista === 'qr' ? 'activa' : ''} onClick={() => setVista('qr')}>Códigos QR</button>
       </div>
-      {vista === 'registro' ? <Registro /> : <QrGenerador />}
+      {vista === 'registro' ? <Registro /> : vista === 'fichas' ? <Fichas /> : <QrGenerador />}
     </div>
   )
 }

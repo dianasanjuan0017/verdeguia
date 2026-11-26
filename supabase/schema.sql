@@ -1,4 +1,4 @@
--- VerdeGuía PMV v0.1.0 - Esquema de base de datos (Supabase / PostgreSQL)
+-- VerdeGuía PMV v0.1.1 - Esquema de base de datos (Supabase / PostgreSQL)
 -- Ejecutar completo en: Supabase > SQL Editor > New query
 
 create table if not exists viveros (
@@ -34,6 +34,25 @@ alter table accesos enable row level security;
 drop policy if exists "equipo lee accesos" on accesos;
 create policy "equipo lee accesos" on accesos
   for select to authenticated using (true);
+
+-- Administración de viveros y fichas desde /admin (solo usuarios con sesión).
+drop policy if exists "equipo lee viveros" on viveros;
+drop policy if exists "equipo crea viveros" on viveros;
+drop policy if exists "equipo edita viveros" on viveros;
+drop policy if exists "equipo borra viveros" on viveros;
+create policy "equipo lee viveros"   on viveros for select to authenticated using (true);
+create policy "equipo crea viveros"  on viveros for insert to authenticated with check (true);
+create policy "equipo edita viveros" on viveros for update to authenticated using (true) with check (true);
+create policy "equipo borra viveros" on viveros for delete to authenticated using (true);
+
+drop policy if exists "equipo lee fichas" on fichas;
+drop policy if exists "equipo crea fichas" on fichas;
+drop policy if exists "equipo edita fichas" on fichas;
+drop policy if exists "equipo borra fichas" on fichas;
+create policy "equipo lee fichas"   on fichas for select to authenticated using (true);
+create policy "equipo crea fichas"  on fichas for insert to authenticated with check (true);
+create policy "equipo edita fichas" on fichas for update to authenticated using (true) with check (true);
+create policy "equipo borra fichas" on fichas for delete to authenticated using (true);
 
 -- Única puerta pública: busca la ficha y, si existe, registra el acceso.
 create or replace function registrar_acceso(p_codigo text, p_es_prueba boolean default false)
