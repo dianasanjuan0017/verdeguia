@@ -1,4 +1,4 @@
-# VerdeGuía PMV v0.1.1
+# VerdeGuía PMV v0.1.2
 
 Producto Mínimo Viable de VerdeGuía: al abrir el enlace de un QR (`/f/<código>`) se muestra la ficha de cuidado de la planta y se registra el acceso (código, fecha-hora y marca de prueba). El equipo consulta y exporta esos accesos a CSV en `/admin`, y desde ahí también crea las fichas de los viveros y descarga sus QR.
 
@@ -9,7 +9,7 @@ Ver `docs/software-vs-manual.md`.
 
 ## 1. Configurar Supabase
 1. Crea un proyecto en https://supabase.com.
-2. En **SQL Editor**, ejecuta completo `supabase/schema.sql`. (Si ya habías instalado la v0.1.0, ejecuta solo `supabase/migracion_v0.1.1_fichas_admin.sql`.)
+2. En **SQL Editor**, ejecuta completo `supabase/schema.sql`. (Si ya tenías una versión anterior, ejecuta solo las migraciones que falten, en orden: `supabase/migracion_v0.1.1_fichas_admin.sql` y `supabase/migracion_v0.1.2_imagenes.sql`.)
 3. Ejecuta `supabase/seed_demo.sql` (datos ficticios etiquetados como DEMO).
 4. En **Authentication > Users**, crea el usuario del equipo (correo y contraseña). En **Authentication > Providers > Email**, desactiva el registro abierto ("Allow new users to sign up").
 5. En **Project Settings > API**, copia la URL del proyecto y la clave `anon public`.
@@ -32,6 +32,7 @@ npm run dev                    # abre http://localhost:5173
 ## 4. Fichas y códigos QR
 El QR solo contiene el enlace a la ficha: `https://TU-DOMINIO/f/<código>`. Al escanearlo, el celular abre ese enlace y la app registra el acceso.
 - En `/admin > Fichas` el equipo crea viveros (nombre y contacto) y fichas (planta y cuidados). Al guardar una ficha nueva se muestra su QR para descargarlo en PNG e imprimirlo.
+- Cada ficha puede llevar una **foto** de la planta (opcional): se elige desde el formulario, se reduce sola a 1200 px antes de subirse y se muestra arriba de la etiqueta al escanear. Se guarda en Supabase Storage (bucket público `fichas`, máx. 2 MB). Solo fotos de plantas, sin personas.
 - Cada cuidado se escribe en una línea con el formato `Luz: texto`, `Riego: texto`, etc.
 - El código de una ficha no se puede cambiar después, porque puede estar impreso en un QR. Si se elimina una ficha, su QR deja de funcionar; los accesos ya registrados se conservan.
 - Genera los QR definitivos **desde la URL publicada**, no desde localhost.
@@ -55,9 +56,12 @@ Los QR deben apuntar a `https://TU-DOMINIO/f/<código>`. Para accesos del equipo
 | Error de red o de Supabase | Mensaje amable, sin detalles técnicos |
 | Login incorrecto | "Correo o contraseña incorrectos", sin revelar cuál falló |
 | Visitante sin sesión | No puede leer la tabla `accesos` (RLS) |
+| Foto que no carga o ficha sin foto | La ficha se muestra igual, sin la foto |
+| Archivo que no es imagen o es muy pesado | Mensaje claro en el formulario; no se guarda nada |
 
 ## 7. Seguridad y privacidad
 - Ningún secreto en el código: las claves van en variables de entorno. La clave `anon` es pública por diseño; la protección está en RLS y en la función `registrar_acceso`.
+- Las fotos son públicas por diseño (se ven al escanear). Solo las cuentas del equipo pueden subirlas, cambiarlas o borrarlas.
 - Las cuentas del equipo se crean a mano y el registro abierto está desactivado; solo ellas pueden leer `accesos` y administrar fichas.
 - La tabla `accesos` solo guarda código, fecha-hora y marca de prueba. No guarda IP ni datos del dispositivo.
 - Los datos de demostración son ficticios. No se publican datos de participantes.

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient.js'
 import QrFicha from './QrFicha.jsx'
+import { prepararImagen, urlImagen } from '../utils/imagen.js'
 
 const VALIDO = /^[A-Za-z0-9-]{3,32}$/
 const ALFABETO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // sin letras ni números que se confundan
@@ -24,9 +25,9 @@ export default function Fichas() {
     setError('')
     const [v, f] = await Promise.all([
       supabase.from('viveros').select('id, nombre, contacto, es_demo').order('nombre'),
-      supabase.from('fichas').select('codigo, planta, cuidados, vivero_id, es_demo').order('planta'),
+      supabase.from('fichas').select('codigo, planta, cuidados, imagen_path, vivero_id, es_demo').order('planta'),
     ])
-    if (v.error || f.error) setError('No se pudieron leer los datos. Revisa que ejecutaste la migración v0.1.1 en Supabase.')
+    if (v.error || f.error) setError('No se pudieron leer los datos. Revisa que ejecutaste las migraciones en Supabase.')
     else { setViveros(v.data); setFichas(f.data) }
     setCargando(false)
   }
@@ -41,6 +42,7 @@ export default function Fichas() {
     if (!ok) return
     const { error } = await supabase.from('fichas').delete().eq('codigo', f.codigo)
     if (error) setError('No se pudo eliminar la ficha.')
+    else if (f.imagen_path) await supabase.storage.from('fichas').remove([f.imagen_path])
     if (qr === f.codigo) setQr('')
     cargar()
   }
@@ -88,9 +90,14 @@ export default function Fichas() {
         <div className="lista-tarjetas">
           {fichas.map((f) => (
             <div className="tarjeta" key={f.codigo}>
-              <div>
-                <strong>{f.planta}</strong>{f.es_demo && <span className="chip">demo</span>}
-                <div className="nota">{f.codigo} · {nombreVivero(f.vivero_id)}</div>
+              <div className="fila-ficha">
+                {f.imagen_path && (
+                  <img className="miniatura" src={urlImagen(supabase, f.imagen_path)} alt="" loading="lazy" />
+                )}
+                <div>
+                  <strong>{f.planta}</strong>{f.es_demo && <span className="chip">demo</span>}
+                  <div className="nota">{f.codigo} · {nombreVivero(f.vivero_id)}{f.imagen_path ? ' · con foto' : ''}</div>
+                </div>
               </div>
               <div className="fila-acciones">
                 <button onClick={() => { setQr(f.codigo); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>QR</button>
@@ -111,8 +118,36 @@ function FormFicha({ viveros, ficha, onGuardada, onCancelar }) {
   const [viveroId, setViveroId] = useState(ficha?.vivero_id ?? viveros[0]?.id ?? '')
   const [planta, setPlanta] = useState(ficha?.planta ?? '')
   const [cuidados, setCuidados] = useState(ficha?.cuidados ?? PLANTILLA)
+  const [archivo, setArchivo] = useState(null)
+  const [previa, setPrevia] = useState('')
+  const [quitarFoto, setQuitarFoto] = useState(false)
   const [error, setError] = useState('')
   const [guardando, setGuardando] = useState(false)
+
+  useEffect(() => () => { if (previa) URL.revokeObjectURL(previa) }, [previa])
+
+  function elegirArchivo(e) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    if (!f.type.startsWith('image/')) {
+      setError('Elige un archivo de imagen (JPG, PNG o WebP).')
+      e.target.value = ''
+      return
+    }
+    setError('')
+    setArchivo(f)
+    setQuitarFoto(false)
+    setPrevia(URL.createObjectURL(f))
+  }
+
+  function quitarSeleccion() {
+    setArchivo(null)
+    setPrevia('')
+    if (ficha?.imagen_path) setQuitarFoto(true)
+  }
+
+  const fotoActual = !quitarFoto && ficha?.imagen_path ? urlImagen(supabase, ficha.imagen_path) : ''
+  const fotoMostrada = previa || fotoActual
 
   async function guardar() {
     setError('')
@@ -120,18 +155,46 @@ function FormFicha({ viveros, ficha, onGuardada, onCancelar }) {
     if (!viveroId) return setError('Elige un vivero.')
     if (!planta.trim()) return setError('Escribe el nombre de la planta.')
     setGuardando(true)
+
+    // 1) Subir la foto nueva (si hay), ya reducida
+    let nuevaRuta = null
+    if (archivo) {
+      try {
+        const blob = await prepararImagen(archivo)
+        nuevaRuta = `${codigo}/${Date.now()}.jpg`
+        const { error: errSubida } = await supabase.storage
+          .from('fichas')
+          .upload(nuevaRuta, blob, { contentType: 'image/jpeg', cacheControl: '31536000' })
+        if (errSubida) throw new Error('No se pudo subir la imagen. Revisa que ejecutaste la migración v0.1.2.')
+      } catch (err) {
+        setGuardando(false)
+        return setError(err.message)
+      }
+    }
+
+    // 2) Guardar la ficha
+    const imagenPath = nuevaRuta ?? (quitarFoto ? null : ficha?.imagen_path ?? null)
     const datos = {
       vivero_id: viveroId,
       planta: planta.trim(),
       cuidados: cuidados.split('\n').map((l) => l.trimEnd()).filter((l) => l.replace(/^[^:]*:/, '').trim()).join('\n') || null,
+      imagen_path: imagenPath,
     }
-    const { error } = esNueva
+    const { error: errGuardar } = esNueva
       ? await supabase.from('fichas').insert({ codigo, es_demo: false, ...datos })
       : await supabase.from('fichas').update(datos).eq('codigo', codigo)
-    setGuardando(false)
-    if (error) {
-      return setError(error.code === '23505' ? 'Ese código ya existe. Genera otro.' : 'No se pudo guardar la ficha.')
+
+    if (errGuardar) {
+      if (nuevaRuta) await supabase.storage.from('fichas').remove([nuevaRuta]) // no dejar fotos huérfanas
+      setGuardando(false)
+      return setError(errGuardar.code === '23505' ? 'Ese código ya existe. Genera otro.' : 'No se pudo guardar la ficha. Si agregaste foto, revisa la migración v0.1.2.')
     }
+
+    // 3) Borrar la foto anterior si se reemplazó o se quitó
+    if (ficha?.imagen_path && (nuevaRuta || quitarFoto)) {
+      await supabase.storage.from('fichas').remove([ficha.imagen_path])
+    }
+    setGuardando(false)
     onGuardada(codigo, esNueva)
   }
 
@@ -154,10 +217,19 @@ function FormFicha({ viveros, ficha, onGuardada, onCancelar }) {
         <textarea rows={6} value={cuidados} onChange={(e) => setCuidados(e.target.value)} />
       </label>
       <p className="nota">Una línea por cuidado, con el formato <code>Luz: texto</code>. Las líneas sin texto se omiten.</p>
+
+      <div className="campo-foto">
+        <span className="etiqueta-campo">Foto de la planta (opcional)</span>
+        {fotoMostrada && <img className="previa-foto" src={fotoMostrada} alt="Vista previa de la foto de la planta" />}
+        <input type="file" accept="image/jpeg,image/png,image/webp" onChange={elegirArchivo} />
+        {fotoMostrada && <button type="button" className="secundario peligro" onClick={quitarSeleccion}>Quitar foto</button>}
+        <p className="nota">Solo fotos de la planta, sin personas. Se reduce sola antes de subirse. Si no agregas foto, la ficha se ve igual sin ella.</p>
+      </div>
+
       {error && <p className="aviso aviso-error" role="alert">{error}</p>}
       <div className="fila-acciones">
-        <button onClick={guardar} disabled={guardando}>{esNueva ? 'Guardar y ver QR' : 'Guardar cambios'}</button>
-        <button className="secundario" onClick={onCancelar}>Cancelar</button>
+        <button onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : esNueva ? 'Guardar y ver QR' : 'Guardar cambios'}</button>
+        <button className="secundario" onClick={onCancelar} disabled={guardando}>Cancelar</button>
       </div>
     </div>
   )

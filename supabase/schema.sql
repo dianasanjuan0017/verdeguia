@@ -1,4 +1,4 @@
--- VerdeGuía PMV v0.1.1 - Esquema de base de datos (Supabase / PostgreSQL)
+-- VerdeGuía PMV v0.1.2 - Esquema de base de datos (Supabase / PostgreSQL)
 -- Ejecutar completo en: Supabase > SQL Editor > New query
 
 create table if not exists viveros (
@@ -13,6 +13,7 @@ create table if not exists fichas (
   vivero_id uuid not null references viveros(id),
   planta    text not null,
   cuidados  text,
+  imagen_path text,
   es_demo   boolean not null default true
 );
 
@@ -68,7 +69,7 @@ begin
     return null;
   end if;
 
-  select f.codigo, f.planta, f.cuidados, f.es_demo, vi.nombre as vivero, vi.contacto
+  select f.codigo, f.planta, f.cuidados, f.imagen_path, f.es_demo, vi.nombre as vivero, vi.contacto
     into v
     from fichas f
     join viveros vi on vi.id = f.vivero_id
@@ -84,6 +85,7 @@ begin
     'codigo',   v.codigo,
     'planta',   v.planta,
     'cuidados', v.cuidados,
+    'imagen',   v.imagen_path,
     'vivero',   v.vivero,
     'contacto', v.contacto,
     'es_demo',  v.es_demo
@@ -93,3 +95,23 @@ $$;
 
 revoke all on function registrar_acceso(text, boolean) from public;
 grant execute on function registrar_acceso(text, boolean) to anon, authenticated;
+
+-- Fotos de las fichas (v0.1.2)
+-- Bucket público de lectura: las fotos de las plantas se ven sin iniciar sesión.
+-- Límite de 2 MB y solo JPG, PNG o WebP. La app reduce la foto antes de subirla.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('fichas', 'fichas', true, 2097152, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update
+  set public = true,
+      file_size_limit = 2097152,
+      allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp'];
+
+-- Solo las cuentas del equipo (con sesión) pueden subir, cambiar o borrar fotos.
+drop policy if exists "equipo lee imagenes"   on storage.objects;
+drop policy if exists "equipo sube imagenes"  on storage.objects;
+drop policy if exists "equipo edita imagenes" on storage.objects;
+drop policy if exists "equipo borra imagenes" on storage.objects;
+create policy "equipo lee imagenes"   on storage.objects for select to authenticated using (bucket_id = 'fichas');
+create policy "equipo sube imagenes"  on storage.objects for insert to authenticated with check (bucket_id = 'fichas');
+create policy "equipo edita imagenes" on storage.objects for update to authenticated using (bucket_id = 'fichas') with check (bucket_id = 'fichas');
+create policy "equipo borra imagenes" on storage.objects for delete to authenticated using (bucket_id = 'fichas');

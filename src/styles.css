@@ -121,3 +121,12 @@ input[readonly] { background: #eef3ea; color: var(--apagado); }
 button.peligro { color: var(--error); border-color: var(--error); }
 .qr-ficha { display: grid; gap: 0.6rem; justify-items: start; }
 .qr-ficha .qr-vista { width: 100%; max-width: 17rem; }
+
+/* Fotos de las fichas (v0.1.2) */
+.etiqueta-foto { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; margin: 0 0 1rem; border: 2px solid var(--bosque); border-radius: 12px; background: #fff; }
+.fila-ficha { display: flex; align-items: center; gap: 0.7rem; }
+.miniatura { flex: none; width: 3.2rem; height: 3.2rem; object-fit: cover; border-radius: 8px; border: 1px solid #d3e2cd; }
+.campo-foto { display: grid; gap: 0.5rem; justify-items: start; }
+.etiqueta-campo { font-weight: 600; }
+.previa-foto { width: 100%; max-width: 16rem; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; border: 1px solid #9fb3a2; }
+.campo-foto input[type="file"] { max-width: 100%; font: inherit; }
